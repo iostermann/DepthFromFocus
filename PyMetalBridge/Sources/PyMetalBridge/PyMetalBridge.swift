@@ -11,6 +11,18 @@ let metallib =  "\(#file.replacingOccurrences(of: "/PyMetalBridge.swift", with: 
      defaultLibrary = try! device.makeLibrary(filepath: metallib)
 
 @available(macOS 10.13, *)
+@_cdecl("swift_focus_metric_on_gpu")
+public func swift_focus_metric_on_gpu(input: UnsafePointer<Float>, output: UnsafeMutablePointer<Float>, count: Int) -> Int {
+    return computeOnGPU1D(functionName: "ComputeFocusMetric", input: input, output: output, count: count)
+}
+
+@available(macOS 10.13, *)
+@_cdecl("swift_focus_metric_flat_on_gpu")
+public func swift_focus_metric_flat_on_gpu(input: UnsafePointer<Float>, output: UnsafeMutablePointer<Float>, count: Int) -> Int {
+    return computeOnGPU1D(functionName: "ComputeFocusMetricFlat", input: input, output: output, count: count)
+}
+
+@available(macOS 10.13, *)
 @_cdecl("swift_sigmoid_on_gpu")
 public func swift_sigmoid_on_gpu(input: UnsafePointer<Float>, output: UnsafeMutablePointer<Float>, count: Int) -> Int {
     return computeOnGPU1D(functionName: "sigmoid", input: input, output: output, count: count)
@@ -29,8 +41,8 @@ func computeOnGPU1D(functionName: String,  input: UnsafePointer<Float>, output: 
         let commandBuffer = commandQueue.makeCommandBuffer()!
         let computeCommandEncoder = commandBuffer.makeComputeCommandEncoder()!
 
-        let sigmoidFunction = defaultLibrary.makeFunction(name: functionName)!
-        let computePipelineState = try device.makeComputePipelineState(function: sigmoidFunction)
+        let Function = defaultLibrary.makeFunction(name: functionName)!
+        let computePipelineState = try device.makeComputePipelineState(function: Function)
         computeCommandEncoder.setComputePipelineState(computePipelineState)
 
         let inputByteLength = count*MemoryLayout<Float>.size
@@ -59,7 +71,7 @@ func computeOnGPU1D(functionName: String,  input: UnsafePointer<Float>, output: 
         commandBuffer.commit()
         commandBuffer.waitUntilCompleted()
 
-        // unsafe bitcast and assigin result pointer to output
+        // unsafe bitcast and assigning result pointer to output
         output.initialize(from: outVectorBuffer!.contents().assumingMemoryBound(to: Float.self), count: count)
 
         free(resultRef)

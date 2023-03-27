@@ -25,51 +25,23 @@ kernel void ComputeFocusMetric(texture2d<float, access::read> inTexture [[textur
     outTexture.write(float4(accumColor.rgb, 1), gid);
 }
 
-kernel void sigmoid(const device float *inVector [[ buffer(0) ]],
+kernel void ComputeFocusMetricFlat(const device float *inVector [[ buffer(0) ]],
                     device float *outVector [[ buffer(1) ]],
                     uint id [[ thread_position_in_grid ]]) {
-    // This calculates sigmoid for _one_ position (=id) in a vector per call on the GPU
-    outVector[id] = 1.0 / (1.0 + exp(-inVector[id]));
-}
-
-inline int factorial(int n) {
-  int product = 1;
-  for(int i = 1; i < n; ++i ) {
-      product *= i;
-  }
-  return product;
-}
-
-kernel void maclaurin_cos(const device float *inVector [[ buffer(0) ]],
-                    device float *outVector [[ buffer(1) ]],
-                    uint id [[ thread_position_in_grid ]]) {
-
-    float approximate = 0;
-    for(int i = 0; i < 10; i++) {
-        float x = inVector[id];
-        float coef = pow(-1.0f, i);
-        int num = pow(x, 2.0f*i);
-        int denom = factorial(2.0f*i);
-        approximate += coef * (num/denom);
-        i++;
-    }
-    outVector[id] = approximate;
-}
-
-inline float f(const float x) {
-    float approximate = 0;
-    for(int coeff = 1; coeff < 10000; coeff+=2) {
-        approximate += (1.0f/coeff)*sin(coeff*x);
-    }
-    return approximate;
-}
-
-constant float delta = 1e-4;
-
-kernel void differential(const device float *inVector [[ buffer(0) ]],
-                    device float *outVector [[ buffer(1) ]],
-                    uint id [[ thread_position_in_grid ]]) {
-
-    float x = inVector[id];
-    outVector[id] = (f(x+delta) - f(x-delta)) / 2.0f*delta;
+    // This calculates a laplace of gaussian kernel in the area surrounding the current pixel
+    int y = 3 * 1200;
+    int x = 3 * 1;
+    float up = inVector[id - y];
+    float down = inVector[id + y];
+    float left = inVector[id - x];
+    float right = inVector[id + x];
+    float upleft = inVector[id - x - y];
+    float upright = inVector[id + x - y];
+    float downleft = inVector[id - x + y];
+    float downright = inVector[id + x + y];
+    float center = inVector[id];
+    
+    float laplacian = -upleft + -up + -upright + -left + (8*center) + -right + -downleft + -down + -downright;
+    
+    outVector[id] = laplacian;
 }
