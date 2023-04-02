@@ -14,6 +14,7 @@ def init_window():
 def cleanup_windows():
     cv2.destroyAllWindows()
 
+
 def init_compute():
     print("Initializing Metal backend for Compute")
     global swift_fun

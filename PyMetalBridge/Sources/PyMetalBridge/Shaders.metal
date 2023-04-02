@@ -43,5 +43,5 @@ kernel void ComputeFocusMetricFlat(const device float *inVector [[ buffer(0) ]],
     
     float laplacian = -upleft + -up + -upright + -left + (8*center) + -right + -downleft + -down + -downright;
     
-    outVector[id] = laplacian;
+    outVector[id] = sqrt(laplacian * laplacian);
 }
