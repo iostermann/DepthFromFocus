@@ -35,12 +35,13 @@ def main():
 
     print("Loading Image Stack...")
     image_stack = utils.image.LoadImageStack(args.input)
+    image_stack = utils.image.RegisterImages(image_stack, method='SIFT')
 
     cost_volume = None
     if args.gpu:
         print("Using GPU for Image Computations")
     else:
-        cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=7)
+        cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=9)
 
     all_in_focus = utils.image.ComputeAllInFocus(cost_volume, image_stack)
     '''
