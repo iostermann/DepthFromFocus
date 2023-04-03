@@ -50,21 +50,26 @@ def RegisterImages(stack, method='ECC'):
         img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
         if method == 'ECC':
-            print("Using ECC for alignment")
             homography = np.eye(3, 3, dtype=np.float32)
             iterations = 5000
             eps = 1e-8
 
             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, iterations,  eps)
 
-            correlation, homography = cv2.findTransformECC(img1_gray, img2_gray, homography, cv2.MOTION_HOMOGRAPHY, criteria)
-            stack[keys[i+1]] = cv2.warpPerspective(img2, homography, (image_shape[1], image_shape[0]), flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
+            correlation, homography = cv2.findTransformECC(img1_gray,
+                                                           img2_gray,
+                                                           homography,
+                                                           cv2.MOTION_HOMOGRAPHY,
+                                                           criteria)
+            stack[keys[i+1]] = cv2.warpPerspective(img2,
+                                                   homography,
+                                                   (image_shape[1], image_shape[0]),
+                                                   flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
             print("Aligned image", i, "with image", i+1, "with correlation", correlation)
 
         elif method == 'SIFT':
             # Implementation borrowed heavily from:
             # https://github.com/sangminwoo/Depth_from_Focus/blob/master/Codes/image_alignment.py
-            print("Using SIFT for alignment")
             sift = cv2.xfeatures2d.SIFT_create()
             keypoints1, descriptors1 = sift.detectAndCompute(img2_gray, None)
             keypoints2, descriptors2 = sift.detectAndCompute(img1_gray, None)
@@ -123,13 +128,12 @@ def ComputeCostVolume(stack, ksize_L=3, ksize_G=3):
         # Convert Image to greyscale
         img_gray = cv2.cvtColor(img_blur, cv2.COLOR_BGR2GRAY)
 
-
         # Compute Laplacian
         img_dst = cv2.Laplacian(img_gray, ddepth=cv2.CV_16S, ksize=ksize_L)
 
         # Scale back to uint8
         img_result = cv2.convertScaleAbs(img_dst)
-        #img_result = cv2.GaussianBlur(img_result, (7, 7), 0)
+        # img_result = cv2.GaussianBlur(img_result, (7, 7), 0)
         cost_volume[i] = img_result
         i += 1
     return cost_volume
