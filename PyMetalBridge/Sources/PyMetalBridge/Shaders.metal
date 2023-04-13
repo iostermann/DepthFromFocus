@@ -45,3 +45,31 @@ kernel void ComputeFocusMetricFlat(const device float *inVector [[ buffer(0) ]],
     
     outVector[id] = sqrt(laplacian * laplacian);
 }
+
+kernel void AssembleAllInFocus(const device float *inVectorVolume [[ buffer(0) ]],
+                               const device int *inVectorFocus [[ buffer(1) ]],
+                               
+                               constant int& length [[ buffer(2)]],
+                               constant int& width [[ buffer(3)]],
+                               constant int& depth [[ buffer(4)]],
+
+                               device float *outVector [[ buffer(5) ]],
+                               uint id [[ thread_position_in_grid ]]) {
+    
+    // This doubling needs to happen because of... byte alignment? idk man...
+    // When it's not doubled, there are blank lines
+    int imgIdx = inVectorFocus[id*2];
+    
+    int d = length * width;
+    int volumeIdx = 3 * ((imgIdx * d) + id);
+    float pixelR = inVectorVolume[volumeIdx+0];
+    float pixelG = inVectorVolume[volumeIdx+1];
+    float pixelB = inVectorVolume[volumeIdx+2];
+
+    
+    int outputIdx = id * 3;
+    outVector[outputIdx+0] = pixelR;
+    outVector[outputIdx+1] = pixelG;
+    outVector[outputIdx+2] = pixelB;
+
+}

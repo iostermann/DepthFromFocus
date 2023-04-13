@@ -1,6 +1,9 @@
 import cv2
 import os
 import numpy as np
+import pickle
+
+import utils.metal
 
 image_shape = (0, 0)
 
@@ -28,23 +31,40 @@ def LoadImageStack(dir_: str):
     return image_stack
 
 
-def RegisterImages(stack, method='ECC'):
+def RegisterImages(stack,
+                   method='ECC',
+                   order='nearest_first',
+                   use_cache=False):
     """
     Registration is Pairwise, so one idea is to move through focal stack and align 1st to 2nd, 2nd to 3rd, etc
     This might cause errors to propagate badly though, so another strategy is to just compare to the image in
     the center of the focal stack??
 
+    order variable specifies if the images go from nearest focus first ro furthest focus first
+
     Inspired by https://learnopencv.com/image-alignment-ecc-in-opencv-c-python/
     """
-    print("Aligning Images...")
+    print("Aligning Images with", method, "...")
+
+    if use_cache and os.path.isfile("aligned_stack.pickle"):
+        with open('aligned_stack.pickle', 'rb') as handle:
+            return pickle.load(handle)
+    elif use_cache:
+        print("Could not find cache file, aligning images...")
 
     # Just do pairwise through the stack
     keys = list(stack.keys())
 
     # Iterate through pairs and align 1-2, 2-3, 3-4, etc
-    for i in range(len(keys)-1):
+    img_range = None
+    if order == 'nearest_first':
+        img_range = range(len(keys)-1)
+    elif order == 'furthest_first':
+        img_range = range(len(keys)-1, 0, -1)
+
+    for i in img_range:
         img1 = stack[keys[i]]
-        img2 = stack[keys[i+1]]
+        img2 = stack[keys[i-1]]
 
         img1_gray = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
         img2_gray = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
@@ -52,7 +72,7 @@ def RegisterImages(stack, method='ECC'):
         if method == 'ECC':
             homography = np.eye(3, 3, dtype=np.float32)
             iterations = 5000
-            eps = 1e-8
+            eps = 1e-10
 
             criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, iterations,  eps)
 
@@ -61,11 +81,11 @@ def RegisterImages(stack, method='ECC'):
                                                            homography,
                                                            cv2.MOTION_HOMOGRAPHY,
                                                            criteria)
-            stack[keys[i+1]] = cv2.warpPerspective(img2,
+            stack[keys[i-1]] = cv2.warpPerspective(img2,
                                                    homography,
                                                    (image_shape[1], image_shape[0]),
                                                    flags=cv2.INTER_LINEAR + cv2.WARP_INVERSE_MAP)
-            print("Aligned image", i, "with image", i+1, "with correlation", correlation)
+            print("Aligned image", i, "with image", i-1, "with correlation", correlation)
 
         elif method == 'SIFT':
             # Implementation borrowed heavily from:
@@ -95,12 +115,16 @@ def RegisterImages(stack, method='ECC'):
             height, width, channels = img1.shape
             homography, mask = cv2.findHomography(points1, points2, cv2.RANSAC)
             aligned_img = cv2.warpPerspective(img2, homography, (width, height))
-            stack[keys[i + 1]] = aligned_img
-            print("Aligned image", i, "with image", i+1, "with", len(good_matches), "SIFT features")
+            stack[keys[i - 1]] = aligned_img
+            print("Aligned image", i, "with image", i-1, "with", len(good_matches), "SIFT features")
 
     # for filename, img in stack.items():
     #     cv2.imshow(filename, img)
     #     cv2.waitKey(0)
+
+    print("Saving aligned images for caching purposes")
+    with open('aligned_stack.pickle', 'wb') as handle:
+        pickle.dump(stack, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     return stack
 
@@ -133,7 +157,7 @@ def ComputeCostVolume(stack, ksize_L=3, ksize_G=3):
 
         # Scale back to uint8
         img_result = cv2.convertScaleAbs(img_dst)
-        # img_result = cv2.GaussianBlur(img_result, (7, 7), 0)
+        # img_result = cv2.GaussianBlur(img_result, (15, 15), 0)
         cost_volume[i] = img_result
         i += 1
     return cost_volume
@@ -144,17 +168,33 @@ def ComputeAllInFocus(cost_volume, stack):
     all_in_focus = np.zeros((image_shape[0], image_shape[1], 3), dtype='uint8')
     max_focus = np.argmax(cost_volume, axis=0)
 
+    # Blur it a bit so things stay locally correct
+    max_focus = cv2.bilateralFilter(max_focus.astype("float32"), 9, 75, 75).astype("uint8")
+
     # Convert Stack to something better indexable
-    stack_volume = np.zeros((len(stack), image_shape[0], image_shape[1], 3))
+    stack_volume = np.zeros((len(stack), image_shape[0], image_shape[1], 3), dtype='uint8')
     i = 0
     for img in stack.values():
         stack_volume[i] = img
         i += 1
 
-    # This MUST be vectorizable
-    for x in range(image_shape[0]):
-        for y in range(image_shape[1]):
-            all_in_focus[x][y] = stack_volume[max_focus[x][y]][x][y]
+    all_in_focus = utils.metal.ComputeAllInFocus(stack_volume, max_focus)
+    all_in_focus = np.reshape(all_in_focus, (image_shape[0], image_shape[1], 3))
+
+    # This MUST be vectorizable??
+    #for x in range(image_shape[0]):
+    #    for y in range(image_shape[1]):
+    #        all_in_focus[x][y] = stack_volume[max_focus[x][y]][x][y]
+
+
+    # Scale, convert, then flip range to pretty print the depth
+    max_focus = max_focus.astype('float')
+    max_focus = (max_focus - np.min(max_focus)) / (np.max(max_focus) - np.min(max_focus))
+    max_focus *= 255
+    max_focus = 255 - max_focus
+    max_focus_pretty = cv2.applyColorMap(max_focus.astype('uint8'), cv2.COLORMAP_VIRIDIS)
+    cv2.imshow("Output", max_focus_pretty)
+    cv2.waitKey(0)
     cv2.imshow("Output", all_in_focus)
     cv2.waitKey(0)
     return all_in_focus

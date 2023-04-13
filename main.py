@@ -35,15 +35,17 @@ def main():
 
     print("Loading Image Stack...")
     image_stack = utils.image.LoadImageStack(args.input)
-    image_stack = utils.image.RegisterImages(image_stack, method='SIFT')
+    image_stack = utils.image.RegisterImages(image_stack, method='SIFT', order='furthest_first', use_cache=True)
+    #image_stack = utils.image.RegisterImages(image_stack, method='ECC', order='furthest_first', use_cache=False)
 
     cost_volume = None
     if args.gpu:
         print("Using GPU for Image Computations")
     else:
-        cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=9)
+        cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=19)
 
     all_in_focus = utils.image.ComputeAllInFocus(cost_volume, image_stack)
+    cv2.imwrite("all-in-focus.png", all_in_focus)
     '''
     img = utils.image.LoadImage("resources/images/Seagullz.png")
     imgShape = img.shape

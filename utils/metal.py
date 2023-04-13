@@ -19,10 +19,14 @@ def init_compute():
     print("Initializing Metal backend for Compute")
     global swift_fun
     swift_fun = ctypes.CDLL("./PyMetalBridge/.build/release/libPyMetalBridge.dylib")
-    swift_fun.swift_focus_metric_flat_on_gpu.argtypes = [
+    swift_fun.swift_all_in_focus_on_gpu.argtypes = [
         ctypes.POINTER(ctypes.c_float),
+        ctypes.POINTER(ctypes.c_int),
         ctypes.POINTER(ctypes.c_float),
-        ctypes.c_int
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+        ctypes.POINTER(ctypes.c_int),
+
     ]
     return swift_fun
 
@@ -32,3 +36,27 @@ def ComputeFocusMetric(input_image: np.ndarray):
     output_mutable_ptr = (ctypes.c_float * len(input_image))()
     swift_fun.swift_focus_metric_flat_on_gpu(input_ptr, output_mutable_ptr, len(input_image))
     return np.array(output_mutable_ptr)
+
+
+def ComputeAllInFocus(imageVolume: np.ndarray, focusIndices: np.ndarray):
+    imageVolume_flat = imageVolume.ravel().astype("float32")
+    imageVolume_flat_ptr = imageVolume_flat.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+    focusIndices_flat = focusIndices.ravel().astype("int")
+    focusIndices_flat_ptr = focusIndices_flat.ctypes.data_as(ctypes.POINTER(ctypes.c_int))
+
+    shape = imageVolume.shape
+    L_ptr = ctypes.pointer(ctypes.c_int(shape[2]))
+    W_ptr = ctypes.pointer(ctypes.c_int(shape[1]))
+    D_ptr = ctypes.pointer(ctypes.c_int(shape[0]))
+
+    output_mutable_ptr = (ctypes.c_float * (len(focusIndices_flat) * 3))()
+
+    swift_fun.swift_all_in_focus_on_gpu(imageVolume_flat_ptr,
+                                        focusIndices_flat_ptr,
+                                        output_mutable_ptr,
+                                        L_ptr,
+                                        W_ptr,
+                                        D_ptr)
+
+    return np.array(output_mutable_ptr, dtype="uint8")
+
