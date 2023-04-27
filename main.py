@@ -1,7 +1,6 @@
 import argparse
 import platform
 
-import numpy as np
 import cv2
 
 import utils.image
@@ -36,15 +35,13 @@ def main():
         print("This program does not seem to be running on MacOS, Windows, or Linux. I will now die :(")
         exit(0)
 
-
     print("Loading Image Stack...")
-    image_stack = utils.image.LoadImageStack(args.input)
-    image_stack = utils.image.RegisterImages(image_stack, method='SIFT', order='furthest_first', use_cache=args.cache)
+    image_stack = utils.image.LoadAndRegisterImages(args.input, method='SIFT', order='furthest_first', use_cache=args.cache)
 
     cost_volume = None
     cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=9)
 
-    all_in_focus, depth = utils.image.ComputeAllInFocus(cost_volume, image_stack)
+    all_in_focus, depth = utils.image.ComputeAllInFocus(cost_volume, image_stack, use_gpu=args.gpu)
 
     depth = 255 - depth
     cv2.imwrite("depth.png", depth)

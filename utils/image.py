@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pickle
 
+
 import utils.metal
 
 image_shape = (0, 0)
@@ -33,10 +34,11 @@ def LoadImageStack(dir_: str):
     return image_stack
 
 
-def RegisterImages(stack,
-                   method='ECC',
-                   order='nearest_first',
-                   use_cache=False):
+@utils.metal.timeit
+def LoadAndRegisterImages(dir_: str,
+                          method='ECC',
+                          order='nearest_first',
+                          use_cache=False):
     """
     Registration is Pairwise, so one idea is to move through focal stack and align 1st to 2nd, 2nd to 3rd, etc
     This might cause errors to propagate badly though, so another strategy is to just compare to the image in
@@ -46,17 +48,23 @@ def RegisterImages(stack,
 
     Inspired by https://learnopencv.com/image-alignment-ecc-in-opencv-c-python/
     """
-    print("Aligning Images with", method, "...")
 
     if use_cache and os.path.isfile("aligned_stack.pickle"):
         with open('aligned_stack.pickle', 'rb') as handle:
-            print("Usingn cached registered image stack")
-            return pickle.load(handle)
+            print("Using cached registered image stack")
+            stack = pickle.load(handle)
+            global image_shape
+            image_shape = stack[next(iter(stack))].shape
+            return stack
     elif use_cache:
         print("Could not find cache file, aligning images...")
 
+    stack = LoadImageStack(dir_)
+
     # Just do pairwise through the stack
     keys = list(stack.keys())
+
+    print("Aligning Images with", method, "...")
 
     # Iterate through pairs and align 1-2, 2-3, 3-4, etc
     img_range = None
@@ -132,17 +140,7 @@ def RegisterImages(stack,
     return stack
 
 
-def LoadImageGrayscale(filename: str):
-    img = cv2.imread(filename)
-    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-
-def FlattenAndScaleImage(img: np.ndarray):
-    img = img.ravel().astype("float32")
-    img /= 255.0
-    return img
-
-
+@utils.metal.timeit
 def ComputeCostVolume(stack, ksize_L=3, ksize_G=3):
 
     print("Computing Focus Metric Volume...")
@@ -165,7 +163,8 @@ def ComputeCostVolume(stack, ksize_L=3, ksize_G=3):
     return cost_volume
 
 
-def ComputeAllInFocus(cost_volume, stack):
+@utils.metal.timeit
+def ComputeAllInFocus(cost_volume, stack, use_gpu=True):
     print("Assembling All-In-Focus Image...")
     all_in_focus = np.zeros((image_shape[0], image_shape[1], 3), dtype='uint8')
     max_focus = np.argmax(cost_volume, axis=0)
@@ -180,13 +179,14 @@ def ComputeAllInFocus(cost_volume, stack):
         stack_volume[i] = img
         i += 1
 
-    all_in_focus = utils.metal.ComputeAllInFocus(stack_volume, max_focus)
-    all_in_focus = np.reshape(all_in_focus, (image_shape[0], image_shape[1], 3))
-
-    # This MUST be vectorizable??
-    #for x in range(image_shape[0]):
-    #    for y in range(image_shape[1]):
-    #        all_in_focus[x][y] = stack_volume[max_focus[x][y]][x][y]
+    if use_gpu:
+        all_in_focus = utils.metal.ComputeAllInFocus(stack_volume, max_focus)
+        all_in_focus = np.reshape(all_in_focus, (image_shape[0], image_shape[1], 3))
+    else:
+        # This MUST be vectorizable??
+        for x in range(image_shape[0]):
+            for y in range(image_shape[1]):
+                all_in_focus[x][y] = stack_volume[max_focus[x][y]][x][y]
 
 
     # Scale, convert, then flip range to pretty print the depth
