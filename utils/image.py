@@ -22,7 +22,9 @@ def LoadImageStack(dir_: str):
     # Get list of images in the stack
     stack_file_names = []
     for root, dirs, files in os.walk(dir_):
+
         for file in files:
+            if file == '.DS_Store': continue
             stack_file_names.append(os.path.join(root, file))
     stack_file_names.sort()
     image_stack = {}
@@ -48,6 +50,7 @@ def RegisterImages(stack,
 
     if use_cache and os.path.isfile("aligned_stack.pickle"):
         with open('aligned_stack.pickle', 'rb') as handle:
+            print("Usingn cached registered image stack")
             return pickle.load(handle)
     elif use_cache:
         print("Could not find cache file, aligning images...")
@@ -157,7 +160,6 @@ def ComputeCostVolume(stack, ksize_L=3, ksize_G=3):
 
         # Scale back to uint8
         img_result = cv2.convertScaleAbs(img_dst)
-        # img_result = cv2.GaussianBlur(img_result, (15, 15), 0)
         cost_volume[i] = img_result
         i += 1
     return cost_volume
@@ -169,7 +171,7 @@ def ComputeAllInFocus(cost_volume, stack):
     max_focus = np.argmax(cost_volume, axis=0)
 
     # Blur it a bit so things stay locally correct
-    max_focus = cv2.bilateralFilter(max_focus.astype("float32"), 9, 75, 75).astype("uint8")
+    max_focus = cv2.bilateralFilter(max_focus.astype("float32"), 15, 15, 75).astype("uint8")
 
     # Convert Stack to something better indexable
     stack_volume = np.zeros((len(stack), image_shape[0], image_shape[1], 3), dtype='uint8')
@@ -197,4 +199,4 @@ def ComputeAllInFocus(cost_volume, stack):
     cv2.waitKey(0)
     cv2.imshow("Output", all_in_focus)
     cv2.waitKey(0)
-    return all_in_focus
+    return all_in_focus, max_focus

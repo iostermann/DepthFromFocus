@@ -4,71 +4,55 @@ import platform
 import numpy as np
 import cv2
 
-import utils.OpenGL
-import utils.metal
 import utils.image
+import utils.viewer
 
 parser = argparse.ArgumentParser(description="Reconstructs Depth from Focus Stacks")
 parser.add_argument("--input", help="Directory containing the focus stack of images")
 parser.add_argument("--gpu", help="Use GPU for image computation", action=argparse.BooleanOptionalAction)
+parser.add_argument("--cache", help="Look for a cache of the registered images", action=argparse.BooleanOptionalAction)
 
 
 def main():
     args = parser.parse_args()
     compute_focus_metric_function = None
-    match platform.system():
-        case 'Darwin':
-            print("You are running on MacOS")
-            utils.metal.init_compute()
-            utils.metal.init_window()
-            compute_focus_metric_function = utils.metal.ComputeFocusMetric
-        case 'Windows':
-            print("You are running on Windows")
-            utils.OpenGL.init()
-        case 'Linux':
-            print("You are running on Linux")
-            utils.OpenGL.init()
-        case _:
-            print("This program does not seem to be running on MacOS, Windows, or Linux. I will now die :(")
-            exit(0)
+    platformType = platform.system()
+    if platformType == 'Darwin':
+        print("You are running on MacOS")
+        import utils.metal
+
+        utils.metal.init_compute()
+        utils.metal.init_window()
+        compute_focus_metric_function = utils.metal.ComputeFocusMetric
+    elif platformType == 'Windows':
+        import utils.OpenGL
+        print("You are running on Windows")
+        utils.OpenGL.init()
+    elif platformType == 'Linux':
+        import utils.OpenGL
+        print("You are running on Linux")
+        utils.OpenGL.init()
+    else:
+        print("This program does not seem to be running on MacOS, Windows, or Linux. I will now die :(")
+        exit(0)
 
 
     print("Loading Image Stack...")
     image_stack = utils.image.LoadImageStack(args.input)
-    image_stack = utils.image.RegisterImages(image_stack, method='SIFT', order='furthest_first', use_cache=True)
-    #image_stack = utils.image.RegisterImages(image_stack, method='ECC', order='furthest_first', use_cache=False)
+    image_stack = utils.image.RegisterImages(image_stack, method='SIFT', order='furthest_first', use_cache=args.cache)
 
     cost_volume = None
-    if args.gpu:
-        print("Using GPU for Image Computations")
-    else:
-        cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=19)
+    cost_volume = utils.image.ComputeCostVolume(image_stack, ksize_L=5, ksize_G=9)
 
-    all_in_focus = utils.image.ComputeAllInFocus(cost_volume, image_stack)
+    all_in_focus, depth = utils.image.ComputeAllInFocus(cost_volume, image_stack)
+
+    depth = 255 - depth
+    cv2.imwrite("depth.png", depth)
     cv2.imwrite("all-in-focus.png", all_in_focus)
-    '''
-    img = utils.image.LoadImage("resources/images/Seagullz.png")
-    imgShape = img.shape
-    imgGray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    imgGaussian = cv2.GaussianBlur(imgGray, (3, 3), 0)
-    imgLoG = cv2.Laplacian(imgGaussian, cv2.CV_64F, ksize=31)
-    imgLoG = np.abs(imgLoG)
-    imgLoG = (imgLoG - np.min(imgLoG)) / (np.max(imgLoG) - np.min(imgLoG))
-    cv2.imshow("Output", imgLoG)
-    cv2.waitKey()
 
-    img = utils.image.FlattenAndScaleImage(img)
-    swift_result = compute_focus_metric_function(img)
-    swift_result = np.reshape(swift_result, imgShape)
-    swift_result = (swift_result - np.min(swift_result)) / (np.max(swift_result) - np.min(swift_result))
-    '''
+    utils.viewer.show_depth_image()
 
-
-    #cv2.imshow("Output", np.reshape(swift_result, imgShape))
-    #cv2.waitKey()
     cv2.destroyAllWindows()
-    #print(swift_result)
-    #print(swift_result.size)
     utils.metal.cleanup_windows()
 
 
